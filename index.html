@@ -35,7 +35,7 @@
 <button id="mute" aria-label="Couper le son">🔊</button>
 <div id="menu" class="ov">
   <h1>BALLON</h1>
-  <p>Penche le téléphone ou glisse ton doigt pour bouger la balle jaune.<br>Esquive les balles qui tombent !</p>
+  <p>Penche le téléphone ou glisse ton doigt pour bouger la balle jaune.<br>Esquive les balles qui tombent !<br>Ramasse ⭐ +3 s · 🛡️ bouclier · 🐢 ralenti</p>
   <div id="reg" class="row"><input id="nameIn" maxlength="12" placeholder="Ton pseudo" autocomplete="off"><button id="regBtn" class="small">S'enregistrer</button></div>
   <p id="hello" class="hide">Joueur : <b id="meName"></b> · <a href="#" id="logout">changer</a></p>
   <p id="regMsg" class="err"></p>
@@ -63,6 +63,8 @@
 const cv = document.getElementById('c'), cx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
 let W, H, dpr, player, balls, t, spawnIn, running = false, last = 0, me = null;
+let items, pops, bonus, itemIn, shield, slow;   // bonus : ⭐ +3 s, 🛡️ bouclier, 🐢 ralenti
+const score = () => t + bonus;
 try { me = JSON.parse(localStorage.getItem('ballon-me')) } catch {}
 const COLORS = ['#ff5e5b', '#00cecb', '#a06cd5', '#ff9f1c', '#2ec4b6', '#e71d36', '#7bd389'];
 
@@ -82,6 +84,7 @@ addEventListener('resize', resize);
 
 function start() {
   player = { x: W / 2, r: H * 0.07 }; player.y = H - player.r;
+  items = []; pops = []; bonus = 0; itemIn = 6; shield = 0; slow = 0;
   balls = []; t = 0; spawnIn = 0.5; running = true; last = performance.now(); musicStart();
   tilt0 = tilt;                                  // la position du téléphone au départ = « à plat »
   $('menu').classList.add('hide'); $('over').classList.add('hide');
@@ -132,6 +135,14 @@ function spawn() {
   });
 }
 
+// Bonus : tombe du haut, reste ~6 s au sol, on le ramasse en passant dessus.
+const ITEMS = { star: '⭐', shield: '🛡️', slow: '🐢' };
+function spawnItem() {
+  const r = Math.random(), kind = r < .55 ? 'star' : r < .8 ? 'shield' : 'slow', s = H * .05;
+  items.push({ kind, s, x: s + Math.random() * (W - 2 * s), y: -s, vy: 0, life: 6 });
+}
+function pop(text) { pops.push({ text, x: player.x, y: player.y - player.r * 1.6, t: 1 }); }
+
 function loop(now) {
   if (!running) return;
   const dt = Math.min((now - last) / 1000, 0.05); last = now;
@@ -142,17 +153,37 @@ function loop(now) {
     if (Math.abs(k) > 0.08)                      // petite zone morte pour que la balle ne dérive pas
       player.x = Math.min(Math.max(player.x + k * W * TILT_SPEED * dt, player.r), W - player.r);
   }
-  spawnIn -= dt;
+  shield = Math.max(0, shield - dt); slow = Math.max(0, slow - dt);
+  const bdt = slow > 0 ? dt * .4 : dt;           // 🐢 les balles (et leur arrivée) au ralenti
+  spawnIn -= bdt;
   if (spawnIn <= 0) { spawn(); spawnIn = Math.max(0.25, 1.1 - t / 60) * (0.6 + Math.random() * 0.8); }
+  itemIn -= dt;
+  if (itemIn <= 0) { spawnItem(); itemIn = 7 + Math.random() * 6; }
+  for (const it of items) {
+    if (it.y < H - it.s) { it.vy += H * .8 * dt; it.y = Math.min(it.y + it.vy * dt, H - it.s); } else it.life -= dt;
+    if (Math.hypot(it.x - player.x, it.y - player.y) < it.s + player.r) {
+      it.life = 0; if (navigator.vibrate) navigator.vibrate(25);
+      if (it.kind === 'star') { bonus += 3; pop('+3 s'); sfx.treat(); }
+      else if (it.kind === 'shield') { shield = 10; pop('Bouclier !'); sfx.shield(); }
+      else { slow = 5; pop('Ralenti !'); sfx.slow(); }
+    }
+  }
+  items = items.filter(it => it.life > 0);
+  for (const o of pops) { o.t -= dt; o.y -= H * .15 * dt; }
+  pops = pops.filter(o => o.t > 0);
   const g = H * 1.6;
   for (const b of balls) {
-    b.vy += g * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+    b.vy += g * bdt; b.x += b.vx * bdt; b.y += b.vy * bdt;
     // rebond au sol, toujours assez haut (≥ 45 % de l'écran) pour qu'on puisse passer dessous
     if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.max(Math.abs(b.vy) * 0.82, Math.sqrt(2 * g * H * 0.45)); sfx.bounce(b.r); }
     const dx = b.x - player.x, dy = b.y - player.y, rr = (b.r + player.r) * 0.9; // hitbox un peu indulgente
-    if (dx * dx + dy * dy < rr * rr) return gameOver();
+    if (dx * dx + dy * dy < rr * rr) {
+      if (!shield) return gameOver();
+      shield = 0; b.gone = true; pop('Bouclier cassé'); sfx.stomp();   // le bouclier encaisse une balle
+      if (navigator.vibrate) navigator.vibrate(80);
+    }
   }
-  balls = balls.filter(b => b.x > -b.r && b.x < W + b.r);  // sorties de l'écran
+  balls = balls.filter(b => !b.gone && b.x > -b.r && b.x < W + b.r);  // éclatées ou sorties de l'écran
   draw();
   requestAnimationFrame(loop);
 }
@@ -161,13 +192,14 @@ function gameOver() {
   running = false; dragX = null; draw();
   musicStop(); sfx.hit();
   if (navigator.vibrate) navigator.vibrate(200);
-  if (t > getBest()) setBest(t);
-  $('big').textContent = t.toFixed(1) + ' s';
+  const sc = score();
+  if (sc > getBest()) setBest(sc);
+  $('big').textContent = sc.toFixed(1) + ' s';
   $('best2').textContent = 'Record : ' + getBest().toFixed(1) + ' s';
   // score envoyé en dixièmes de seconde (entier) ; le serveur garde le meilleur
   const list = $('overList'), msg = $('overMsg'); list.textContent = '';
   msg.textContent = me ? 'Envoi du score…' : 'Enregistre un pseudo au menu pour entrer au tableau des scores';
-  (me ? api('scores', { name: me.name, token: me.token, score: Math.round(t * 10) }) : api('scores'))
+  (me ? api('scores', { name: me.name, token: me.token, score: Math.round(sc * 10) }) : api('scores'))
     .then(l => { renderBoard(list, l.slice(0, 5)); if (me) msg.textContent = '' },
       e => msg.textContent = e === 403 ? 'Pseudo inconnu : réenregistre-toi au menu' : 'Tableau des scores indisponible');
   $('over').classList.remove('hide');
@@ -178,10 +210,23 @@ function draw() {
   cx.fillStyle = '#1b2a49'; cx.fillRect(0, 0, W, H);
   if (!player) return;
   for (const b of balls) { circle(b.x, b.y, b.r, b.c); circle(b.x - b.r * .3, b.y - b.r * .3, b.r * .25, 'rgba(255,255,255,.35)'); }
+  cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#fff';  // opaque, sinon les emojis héritent du reflet à 35 %
+  for (const it of items) {
+    if (it.life < 1.5 && Math.floor(it.life * 8) % 2) continue;      // clignote avant de disparaître
+    cx.font = (it.s * 1.8 | 0) + 'px system-ui';
+    cx.fillText(ITEMS[it.kind], it.x, it.y + Math.sin(performance.now() / 200) * it.s * .1);
+  }
   circle(player.x, player.y, player.r, '#ffcc33');
   circle(player.x - player.r * .3, player.y - player.r * .3, player.r * .25, 'rgba(255,255,255,.5)');
-  cx.fillStyle = '#fff'; cx.font = 'bold ' + (H * 0.07 | 0) + 'px system-ui'; cx.textAlign = 'center';
-  cx.fillText(t.toFixed(1) + ' s', W / 2, H * 0.1);
+  if (shield > 0 && (shield > 2 || Math.floor(shield * 8) % 2)) {  // clignote les 2 dernières secondes
+    cx.strokeStyle = '#7fd8ff'; cx.lineWidth = player.r * .15;
+    cx.beginPath(); cx.arc(player.x, player.y, player.r * 1.3, 0, Math.PI * 2); cx.stroke();
+  }
+  cx.fillStyle = '#fff'; cx.font = 'bold ' + (H * 0.07 | 0) + 'px system-ui';
+  cx.fillText(score().toFixed(1) + ' s' + (slow > 0 ? '  🐢' : ''), W / 2, H * 0.1);
+  cx.font = 'bold ' + (H * 0.06 | 0) + 'px system-ui';
+  for (const o of pops) { cx.globalAlpha = Math.min(1, o.t * 2); cx.fillText(o.text, o.x, o.y); }
+  cx.globalAlpha = 1;
 }
 
 // ---------- tableau des scores (même API que Jump) ----------
@@ -252,6 +297,10 @@ const sfx = {
   bounce: r => { const f = 900 * H * .03 / r; tone(f, f * .55, .12, 'sine', .18); },  // grosse balle = son grave
   hit: () => tone(600, 80, .9, 'sawtooth', .22),
   level: () => arp([523, 659, 784, 1047], .08, 'square', .12),
+  treat: () => arp([880, 1320], .08, 'triangle', .3),
+  shield: () => arp([523, 659, 784, 1047], .06, 'triangle', .25),
+  slow: () => tone(700, 150, .8, 'sine', .25),
+  stomp: () => tone(700, 120, .25, 'square', .18),
 };
 const midi = m => 440 * 2 ** ((m - 69) / 12);
 const MEL = [76, 0, 79, 0, 81, 79, 76, 0, 74, 0, 76, 79, 76, 0, 0, 0, 72, 0, 74, 76, 79, 0, 76, 74, 72, 0, 74, 0, 72, 0, 0, 0];
