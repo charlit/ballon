@@ -33,7 +33,7 @@
 <canvas id="c"></canvas>
 <div id="menu" class="ov">
   <h1>BALLON</h1>
-  <p>Glisse ton doigt pour bouger la balle jaune.<br>Esquive les balles qui tombent !</p>
+  <p>Penche le téléphone ou glisse ton doigt pour bouger la balle jaune.<br>Esquive les balles qui tombent !</p>
   <div id="reg" class="row"><input id="nameIn" maxlength="12" placeholder="Ton pseudo" autocomplete="off"><button id="regBtn" class="small">S'enregistrer</button></div>
   <p id="hello" class="hide">Joueur : <b id="meName"></b> · <a href="#" id="logout">changer</a></p>
   <p id="regMsg" class="err"></p>
@@ -81,10 +81,31 @@ addEventListener('resize', resize);
 function start() {
   player = { x: W / 2, r: H * 0.07 }; player.y = H - player.r;
   balls = []; t = 0; spawnIn = 0.5; running = true; last = performance.now();
+  tilt0 = tilt;                                  // la position du téléphone au départ = « à plat »
   $('menu').classList.add('hide'); $('over').classList.add('hide');
   requestAnimationFrame(loop);
 }
-$('play').onclick = start; $('again').onclick = start;
+$('play').onclick = $('again').onclick = () => { enableTilt(); start(); };
+
+// Inclinaison : penche le téléphone à gauche / à droite (paysage). iOS demande la permission au 1er clic.
+const TILT_SPEED = 1.2;   // écrans par seconde à fond ; réglage si trop vif / trop mou
+const TILT_MAX = 25;      // degrés pour la vitesse max
+let tilt = null, tilt0 = null, tiltOn = false;
+async function enableTilt() {
+  if (tiltOn) return;
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission)
+      if (await DeviceOrientationEvent.requestPermission() !== 'granted') return;
+    tiltOn = true;
+    addEventListener('deviceorientation', e => {
+      if (e.beta === null) return;
+      // en paysage, gauche/droite = beta ; le signe dépend du sens dans lequel on tient le téléphone
+      const angle = screen.orientation ? screen.orientation.angle : (window.orientation || 0);
+      tilt = (angle === 90 ? 1 : -1) * e.beta;
+      if (tilt0 === null && running) tilt0 = tilt;
+    });
+  } catch {}
+}
 
 // Relative drag: the ball follows the finger's horizontal movement, wherever you touch.
 let dragX = null;
@@ -113,6 +134,11 @@ function loop(now) {
   if (!running) return;
   const dt = Math.min((now - last) / 1000, 0.05); last = now;
   t += dt;
+  if (tilt !== null && tilt0 !== null && dragX === null) {
+    const k = Math.max(-1, Math.min(1, (tilt - tilt0) / TILT_MAX));
+    if (Math.abs(k) > 0.08)                      // petite zone morte pour que la balle ne dérive pas
+      player.x = Math.min(Math.max(player.x + k * W * TILT_SPEED * dt, player.r), W - player.r);
+  }
   spawnIn -= dt;
   if (spawnIn <= 0) { spawn(); spawnIn = Math.max(0.25, 1.1 - t / 60) * (0.6 + Math.random() * 0.8); }
   const g = H * 1.6;
