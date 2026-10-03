@@ -95,7 +95,8 @@ function loop(now) {
   const g = H * 1.6;
   for (const b of balls) {
     b.vy += g * dt; b.x += b.vx * dt; b.y += b.vy * dt;
-    if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.abs(b.vy) * 0.82; }   // rebond au sol
+    // rebond au sol, toujours assez haut (≥ 45 % de l'écran) pour qu'on puisse passer dessous
+    if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.max(Math.abs(b.vy) * 0.82, Math.sqrt(2 * g * H * 0.45)); }
     const dx = b.x - player.x, dy = b.y - player.y, rr = (b.r + player.r) * 0.9; // hitbox un peu indulgente
     if (dx * dx + dy * dy < rr * rr) return gameOver();
   }
