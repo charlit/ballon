@@ -16,6 +16,15 @@
   p{margin:0;color:#cfd8ea;font-size:18px}
   #big{font-size:56px;font-weight:800}
   button{font:inherit;font-size:22px;font-weight:700;border:0;border-radius:16px;background:#ffcc33;color:#1b2a49;padding:12px 28px}
+  .row{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+  .col{display:flex;flex-direction:column;align-items:center;gap:8px}
+  input{font:inherit;font-size:18px;border:0;border-radius:14px;padding:10px 12px;width:150px;-webkit-user-select:text;user-select:text}
+  .small{font-size:16px;padding:10px 14px;background:#fff}
+  .err{color:#ffb4a8;min-height:1em;font-size:15px}
+  a{color:#ffcc33}
+  ol{margin:0;padding:0 0 0 30px;text-align:left;font-size:18px;min-width:200px;max-height:55vh;overflow:auto;color:#fff}
+  li{padding:2px 0}
+  li.me{font-weight:800;color:#ffcc33}
   #rotate{display:none;z-index:10}
   @media (orientation:portrait){#rotate{display:flex}}
 </style>
@@ -25,20 +34,34 @@
 <div id="menu" class="ov">
   <h1>BALLON</h1>
   <p>Glisse ton doigt pour bouger la balle jaune.<br>Esquive les balles qui tombent !</p>
+  <div id="reg" class="row"><input id="nameIn" maxlength="12" placeholder="Ton pseudo" autocomplete="off"><button id="regBtn" class="small">S'enregistrer</button></div>
+  <p id="hello" class="hide">Joueur : <b id="meName"></b> · <a href="#" id="logout">changer</a></p>
+  <p id="regMsg" class="err"></p>
   <p id="best"></p>
-  <button id="play">Jouer</button>
+  <div class="row"><button id="play">Jouer</button><button id="boardBtn" class="small">🏆 Scores</button></div>
+</div>
+<div id="board" class="ov hide">
+  <h1>🏆 Scores</h1>
+  <ol id="boardList"></ol>
+  <button id="boardClose" class="small">Retour</button>
 </div>
 <div id="over" class="ov hide">
-  <p>Tu as tenu</p>
-  <div id="big"></div>
-  <p id="best2"></p>
-  <button id="again">Rejouer</button>
+  <div class="row" style="gap:32px">
+    <div class="col">
+      <p>Tu as tenu</p>
+      <div id="big"></div>
+      <p id="best2"></p>
+    </div>
+    <div class="col"><ol id="overList"></ol><p id="overMsg" class="err"></p></div>
+  </div>
+  <div class="row"><button id="again">Rejouer</button><button id="toMenu" class="small">Menu</button></div>
 </div>
 <div id="rotate" class="ov"><h1>↻</h1><p>Tourne ton téléphone<br>en mode paysage</p></div>
 <script>
 const cv = document.getElementById('c'), cx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
-let W, H, dpr, player, balls, t, spawnIn, running = false, last = 0;
+let W, H, dpr, player, balls, t, spawnIn, running = false, last = 0, me = null;
+try { me = JSON.parse(localStorage.getItem('ballon-me')) } catch {}
 const COLORS = ['#ff5e5b', '#00cecb', '#a06cd5', '#ff9f1c', '#2ec4b6', '#e71d36', '#7bd389'];
 
 function getBest() { try { return +localStorage.getItem('ballon-best') || 0 } catch { return 0 } }
@@ -111,6 +134,12 @@ function gameOver() {
   if (t > getBest()) setBest(t);
   $('big').textContent = t.toFixed(1) + ' s';
   $('best2').textContent = 'Record : ' + getBest().toFixed(1) + ' s';
+  // score envoyé en dixièmes de seconde (entier) ; le serveur garde le meilleur
+  const list = $('overList'), msg = $('overMsg'); list.textContent = '';
+  msg.textContent = me ? 'Envoi du score…' : 'Enregistre un pseudo au menu pour entrer au tableau des scores';
+  (me ? api('scores', { name: me.name, token: me.token, score: Math.round(t * 10) }) : api('scores'))
+    .then(l => { renderBoard(list, l.slice(0, 5)); if (me) msg.textContent = '' },
+      e => msg.textContent = e === 403 ? 'Pseudo inconnu : réenregistre-toi au menu' : 'Tableau des scores indisponible');
   $('over').classList.remove('hide');
 }
 
@@ -125,7 +154,49 @@ function draw() {
   cx.fillText(t.toFixed(1) + ' s', W / 2, H * 0.1);
 }
 
-resize(); showBest();
+// ---------- tableau des scores (même API que Jump) ----------
+// URL relative : marche sous /ballon/ sur le Mac mini, échoue proprement en statique
+function api(path, body) {
+  return fetch('api/' + path, body && { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status));
+}
+function renderBoard(el, list) {
+  el.replaceChildren(...list.map(p => {
+    const li = document.createElement('li');
+    li.textContent = p.name + ' — ' + (p.score / 10).toFixed(1) + ' s';
+    if (me && p.name.toLowerCase() === me.name.toLowerCase()) li.className = 'me';
+    return li;
+  }));
+  if (!list.length) el.textContent = "Aucun score pour l'instant";
+}
+function showMe() {
+  $('reg').classList.toggle('hide', !!me); $('hello').classList.toggle('hide', !me);
+  if (me) $('meName').textContent = me.name;
+}
+$('regBtn').onclick = async () => {
+  const name = $('nameIn').value.trim(), msg = $('regMsg');
+  if (!name) { msg.textContent = 'Écris un pseudo'; return; }
+  msg.textContent = '…';
+  try {
+    me = await api('register', { name });
+    try { localStorage.setItem('ballon-me', JSON.stringify(me)) } catch {}
+    msg.textContent = ''; showMe();
+  } catch (e) { msg.textContent = e === 409 ? 'Ce pseudo est déjà pris' : 'Inscription indisponible'; }
+};
+$('nameIn').onkeydown = e => { if (e.key === 'Enter') $('regBtn').click(); };
+$('logout').onclick = e => {
+  e.preventDefault(); me = null;
+  try { localStorage.removeItem('ballon-me') } catch {}
+  showMe();
+};
+$('boardBtn').onclick = () => {
+  $('board').classList.remove('hide'); $('boardList').textContent = 'Chargement…';
+  api('scores').then(l => renderBoard($('boardList'), l), () => $('boardList').textContent = 'Tableau des scores indisponible');
+};
+$('boardClose').onclick = () => $('board').classList.add('hide');
+$('toMenu').onclick = () => { $('over').classList.add('hide'); showBest(); $('menu').classList.remove('hide'); };
+
+resize(); showBest(); showMe();
 </script>
 </body>
 </html>
