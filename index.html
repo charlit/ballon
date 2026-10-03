@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1b2a49">
+<title>Ballon</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#1b2a49;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;font-family:system-ui,sans-serif}
+  canvas{display:block;width:100vw;height:100vh;height:100dvh}
+  .ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(27,42,73,.9);color:#fff;text-align:center;padding:16px}
+  .hide{display:none!important}
+  h1{margin:0;font-size:48px;letter-spacing:3px}
+  p{margin:0;color:#cfd8ea;font-size:18px}
+  #big{font-size:56px;font-weight:800}
+  button{font:inherit;font-size:22px;font-weight:700;border:0;border-radius:16px;background:#ffcc33;color:#1b2a49;padding:12px 28px}
+  #rotate{display:none;z-index:10}
+  @media (orientation:portrait){#rotate{display:flex}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="menu" class="ov">
+  <h1>BALLON</h1>
+  <p>Glisse ton doigt pour bouger la balle jaune.<br>Esquive les balles qui tombent !</p>
+  <p id="best"></p>
+  <button id="play">Jouer</button>
+</div>
+<div id="over" class="ov hide">
+  <p>Tu as tenu</p>
+  <div id="big"></div>
+  <p id="best2"></p>
+  <button id="again">Rejouer</button>
+</div>
+<div id="rotate" class="ov"><h1>↻</h1><p>Tourne ton téléphone<br>en mode paysage</p></div>
+<script>
+const cv = document.getElementById('c'), cx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+let W, H, dpr, player, balls, t, spawnIn, running = false, last = 0;
+const COLORS = ['#ff5e5b', '#00cecb', '#a06cd5', '#ff9f1c', '#2ec4b6', '#e71d36', '#7bd389'];
+
+function getBest() { try { return +localStorage.getItem('ballon-best') || 0 } catch { return 0 } }
+function setBest(v) { try { localStorage.setItem('ballon-best', v) } catch {} }
+function showBest() { const b = getBest(); $('best').textContent = b ? 'Record : ' + b.toFixed(1) + ' s' : ''; }
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (player) { player.r = H * 0.07; player.y = H - player.r; player.x = Math.min(Math.max(player.x, player.r), W - player.r); }
+  if (!running) draw();
+}
+addEventListener('resize', resize);
+
+function start() {
+  player = { x: W / 2, r: H * 0.07 }; player.y = H - player.r;
+  balls = []; t = 0; spawnIn = 0.5; running = true; last = performance.now();
+  $('menu').classList.add('hide'); $('over').classList.add('hide');
+  requestAnimationFrame(loop);
+}
+$('play').onclick = start; $('again').onclick = start;
+
+// Relative drag: the ball follows the finger's horizontal movement, wherever you touch.
+let dragX = null;
+cv.addEventListener('pointerdown', e => { dragX = e.clientX; });
+addEventListener('pointermove', e => {
+  if (dragX === null || !running) return;
+  player.x = Math.min(Math.max(player.x + (e.clientX - dragX) * 1.3, player.r), W - player.r);
+  dragX = e.clientX;
+});
+addEventListener('pointerup', () => dragX = null);
+addEventListener('pointercancel', () => dragX = null);
+
+function spawn() {
+  const r = H * (0.03 + Math.random() * 0.11);          // petites à grosses
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  const speed = 1 + t / 40;                              // ça accélère avec le temps
+  balls.push({
+    x: r + Math.random() * (W - 2 * r), y: -r, r,
+    vx: dir * H * (0.15 + Math.random() * 0.35) * speed,
+    vy: H * Math.random() * 0.3,
+    c: COLORS[Math.random() * COLORS.length | 0]
+  });
+}
+
+function loop(now) {
+  if (!running) return;
+  const dt = Math.min((now - last) / 1000, 0.05); last = now;
+  t += dt;
+  spawnIn -= dt;
+  if (spawnIn <= 0) { spawn(); spawnIn = Math.max(0.25, 1.1 - t / 60) * (0.6 + Math.random() * 0.8); }
+  const g = H * 1.6;
+  for (const b of balls) {
+    b.vy += g * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.abs(b.vy) * 0.82; }   // rebond au sol
+    const dx = b.x - player.x, dy = b.y - player.y, rr = (b.r + player.r) * 0.9; // hitbox un peu indulgente
+    if (dx * dx + dy * dy < rr * rr) return gameOver();
+  }
+  balls = balls.filter(b => b.x > -b.r && b.x < W + b.r);  // sorties de l'écran
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function gameOver() {
+  running = false; dragX = null; draw();
+  if (navigator.vibrate) navigator.vibrate(200);
+  if (t > getBest()) setBest(t);
+  $('big').textContent = t.toFixed(1) + ' s';
+  $('best2').textContent = 'Record : ' + getBest().toFixed(1) + ' s';
+  $('over').classList.remove('hide');
+}
+
+function circle(x, y, r, c) { cx.fillStyle = c; cx.beginPath(); cx.arc(x, y, r, 0, Math.PI * 2); cx.fill(); }
+function draw() {
+  cx.fillStyle = '#1b2a49'; cx.fillRect(0, 0, W, H);
+  if (!player) return;
+  for (const b of balls) { circle(b.x, b.y, b.r, b.c); circle(b.x - b.r * .3, b.y - b.r * .3, b.r * .25, 'rgba(255,255,255,.35)'); }
+  circle(player.x, player.y, player.r, '#ffcc33');
+  circle(player.x - player.r * .3, player.y - player.r * .3, player.r * .25, 'rgba(255,255,255,.5)');
+  cx.fillStyle = '#fff'; cx.font = 'bold ' + (H * 0.07 | 0) + 'px system-ui'; cx.textAlign = 'center';
+  cx.fillText(t.toFixed(1) + ' s', W / 2, H * 0.1);
+}
+
+resize(); showBest();
+</script>
+</body>
+</html>
