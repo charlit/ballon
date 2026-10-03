@@ -80,7 +80,7 @@ function spawn() {
   const speed = 1 + t / 40;                              // ça accélère avec le temps
   balls.push({
     x: r + Math.random() * (W - 2 * r), y: -r, r,
-    vx: dir * H * (0.15 + Math.random() * 0.35) * speed,
+    vx: dir * H * (0.3 + Math.random() * 0.35) * speed,
     vy: H * Math.random() * 0.3,
     c: COLORS[Math.random() * COLORS.length | 0]
   });
