@@ -35,7 +35,7 @@
 <button id="mute" aria-label="Couper le son">🔊</button>
 <div id="menu" class="ov">
   <h1>BALLON</h1>
-  <p>Penche le téléphone ou glisse ton doigt pour bouger la balle jaune.<br>Esquive les balles qui tombent !<br>Ramasse ⭐ +3 s · 🛡️ bouclier · 🐢 ralenti</p>
+  <p>Penche le téléphone ou glisse ton doigt pour bouger la balle jaune.<br><b>Touche l'écran pour sauter !</b> Frôle les balles sans les toucher : +0,5 s<br>Ramasse ⭐ +3 s · 🛡️ bouclier · 🐢 ralenti · 💣 bombe · 🧪 mini</p>
   <div id="reg" class="row"><input id="nameIn" maxlength="12" placeholder="Ton pseudo" autocomplete="off"><button id="regBtn" class="small">S'enregistrer</button></div>
   <p id="hello" class="hide">Joueur : <b id="meName"></b> · <a href="#" id="logout">changer</a></p>
   <p id="regMsg" class="err"></p>
@@ -64,6 +64,9 @@ const cv = document.getElementById('c'), cx = cv.getContext('2d');
 const $ = id => document.getElementById(id);
 let W, H, dpr, player, balls, t, spawnIn, running = false, last = 0, me = null;
 let items, pops, bonus, itemIn, shield, slow;   // bonus : ⭐ +3 s, 🛡️ bouclier, 🐢 ralenti
+let mini, parts = [], shake = 0, level, banner, recordDone, bgFrom, bgTo, bgMix, stars = [];  // 🧪 mini, particules, niveaux
+const BGS = ['#1b2a49', '#2b1d4a', '#123b44', '#3d1c3a', '#1d3b2a', '#40291a', '#0f1f3d'];   // un fond par niveau
+const pr = () => player.r * (mini > 0 ? .6 : 1);                                // rayon actuel du joueur
 const score = () => t + bonus;
 try { me = JSON.parse(localStorage.getItem('ballon-me')) } catch {}
 const COLORS = ['#ff5e5b', '#00cecb', '#a06cd5', '#ff9f1c', '#2ec4b6', '#e71d36', '#7bd389'];
@@ -77,14 +80,16 @@ function resize() {
   W = innerWidth; H = innerHeight;
   cv.width = W * dpr; cv.height = H * dpr;
   cx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (player) { player.r = H * 0.07; player.y = H - player.r; player.x = Math.min(Math.max(player.x, player.r), W - player.r); }
+  if (player) { player.r = H * 0.07; player.y = H - pr(); player.vy = 0; player.x = Math.min(Math.max(player.x, pr()), W - pr()); }
+  stars = Array.from({ length: 45 }, () => ({ x: Math.random() * W, y: Math.random() * H, s: .5 + Math.random() * 1.5 }));
   if (!running) draw();
 }
 addEventListener('resize', resize);
 
 function start() {
-  player = { x: W / 2, r: H * 0.07 }; player.y = H - player.r;
+  player = { x: W / 2, r: H * 0.07, vy: 0 }; player.y = H - player.r;
   items = []; pops = []; bonus = 0; itemIn = 6; shield = 0; slow = 0;
+  mini = 0; parts = []; shake = 0; level = 1; banner = 0; recordDone = !getBest(); bgFrom = bgTo = BGS[0]; bgMix = 1;
   balls = []; t = 0; spawnIn = 0.5; running = true; last = performance.now(); musicStart();
   tilt0 = tilt;                                  // la position du téléphone au départ = « à plat »
   $('menu').classList.add('hide'); $('over').classList.add('hide');
@@ -113,14 +118,24 @@ async function enableTilt() {
 }
 
 // Relative drag: the ball follows the finger's horizontal movement, wherever you touch.
-let dragX = null;
-cv.addEventListener('pointerdown', e => { dragX = e.clientX; });
+// A short tap without moving = jump.
+let dragX = null, tap = null;
+cv.addEventListener('pointerdown', e => { dragX = e.clientX; tap = { t: performance.now(), moved: 0 }; });
 addEventListener('pointermove', e => {
   if (dragX === null || !running) return;
-  player.x = Math.min(Math.max(player.x + (e.clientX - dragX) * 1.3, player.r), W - player.r);
+  if (tap) tap.moved += Math.abs(e.clientX - dragX);
+  player.x = Math.min(Math.max(player.x + (e.clientX - dragX) * 1.3, pr()), W - pr());
   dragX = e.clientX;
 });
-addEventListener('pointerup', () => dragX = null);
+addEventListener('pointerup', () => {
+  if (tap && running && performance.now() - tap.t < 250 && tap.moved < 12) jump();
+  dragX = null; tap = null;
+});
+const PG = () => H * 3;                          // gravité du joueur : saut sec
+function jump() {
+  if (player.y < H - pr() - 1) return;           // déjà en l'air
+  player.vy = -Math.sqrt(2 * PG() * H * .4); sfx.jump();
+}
 addEventListener('pointercancel', () => dragX = null);
 
 function spawn() {
@@ -136,24 +151,47 @@ function spawn() {
 }
 
 // Bonus : tombe du haut, reste ~6 s au sol, on le ramasse en passant dessus.
-const ITEMS = { star: '⭐', shield: '🛡️', slow: '🐢' };
+const ITEMS = { star: '⭐', shield: '🛡️', slow: '🐢', bomb: '💣', mini: '🧪' };
 function spawnItem() {
-  const r = Math.random(), kind = r < .55 ? 'star' : r < .8 ? 'shield' : 'slow', s = H * .05;
+  const r = Math.random(), s = H * .05;
+  const kind = r < .4 ? 'star' : r < .6 ? 'shield' : r < .75 ? 'slow' : r < .88 ? 'bomb' : 'mini';
   items.push({ kind, s, x: s + Math.random() * (W - 2 * s), y: -s, vy: 0, life: 6 });
 }
-function pop(text) { pops.push({ text, x: player.x, y: player.y - player.r * 1.6, t: 1 }); }
+function pop(text) { pops.push({ text, x: player.x, y: player.y - player.r * 1.6 - pops.length * H * .07, t: 1 }); }  // empilés s'il y en a déjà
+function burst(x, y, c, n, sp = 1) {             // éclats de couleur
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = H * (.2 + Math.random() * .6) * sp;
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - H * .3 * sp, r: H * (.006 + Math.random() * .012), c, life: .6 + Math.random() * .6 });
+  }
+}
+function confetti() { for (let i = 0; i < 6; i++) burst(Math.random() * W, H * .3, COLORS[i % COLORS.length], 12, 1.2); }
+function stepParts(dt) {
+  for (const p of parts) { p.vy += H * 1.2 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
+  parts = parts.filter(p => p.life > 0);
+}
+const mix = (a, b, k) => '#' + [1, 3, 5].map(i => Math.round(parseInt(a.substr(i, 2), 16) * (1 - k) + parseInt(b.substr(i, 2), 16) * k).toString(16).padStart(2, '0')).join('');
 
 function loop(now) {
   if (!running) return;
   const dt = Math.min((now - last) / 1000, 0.05); last = now;
-  if (Math.floor(t + dt) > Math.floor(t) && Math.floor(t + dt) % 10 === 0) sfx.level();  // jingle toutes les 10 s
+  if (Math.floor(t + dt) > Math.floor(t) && Math.floor(t + dt) % 10 === 0) {  // nouveau niveau toutes les 10 s
+    sfx.level(); level++; banner = 1.6;
+    bgFrom = mix(bgFrom, bgTo, bgMix); bgTo = BGS[(level - 1) % BGS.length]; bgMix = 0;
+  }
   t += dt;
   if (tilt !== null && tilt0 !== null && dragX === null) {
     const k = Math.max(-1, Math.min(1, (tilt - tilt0) / TILT_MAX));
     if (Math.abs(k) > 0.08)                      // petite zone morte pour que la balle ne dérive pas
-      player.x = Math.min(Math.max(player.x + k * W * TILT_SPEED * dt, player.r), W - player.r);
+      player.x = Math.min(Math.max(player.x + k * W * TILT_SPEED * dt, pr()), W - pr());
   }
   shield = Math.max(0, shield - dt); slow = Math.max(0, slow - dt);
+  if (mini > 0 && (mini -= dt) <= 0) { mini = 0; pop('Taille normale'); }
+  player.vy += PG() * dt; player.y += player.vy * dt;                  // saut
+  if (player.y >= H - pr()) { player.y = H - pr(); player.vy = 0; }
+  banner = Math.max(0, banner - dt); bgMix = Math.min(1, bgMix + dt); shake = Math.max(0, shake - dt);
+  stepParts(dt);
+  for (const s of stars) { s.y += s.s * H * .02 * dt; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
+  if (!recordDone && score() > getBest()) { recordDone = true; pop('Nouveau record !'); confetti(); sfx.record(); }
   const bdt = slow > 0 ? dt * .4 : dt;           // 🐢 les balles (et leur arrivée) au ralenti
   spawnIn -= bdt;
   if (spawnIn <= 0) { spawn(); spawnIn = Math.max(0.25, 1.1 - t / 60) * (0.6 + Math.random() * 0.8); }
@@ -161,11 +199,17 @@ function loop(now) {
   if (itemIn <= 0) { spawnItem(); itemIn = 7 + Math.random() * 6; }
   for (const it of items) {
     if (it.y < H - it.s) { it.vy += H * .8 * dt; it.y = Math.min(it.y + it.vy * dt, H - it.s); } else it.life -= dt;
-    if (Math.hypot(it.x - player.x, it.y - player.y) < it.s + player.r) {
+    if (Math.hypot(it.x - player.x, it.y - player.y) < it.s + pr()) {
       it.life = 0; if (navigator.vibrate) navigator.vibrate(25);
       if (it.kind === 'star') { bonus += 3; pop('+3 s'); sfx.treat(); }
       else if (it.kind === 'shield') { shield = 10; pop('Bouclier !'); sfx.shield(); }
-      else { slow = 5; pop('Ralenti !'); sfx.slow(); }
+      else if (it.kind === 'slow') { slow = 5; pop('Ralenti !'); sfx.slow(); }
+      else if (it.kind === 'mini') { mini = 7; pop('Mini !'); sfx.mini(); }
+      else {                                     // 💣 toutes les balles éclatent, +0,5 s chacune
+        for (const b of balls) { b.gone = true; burst(b.x, b.y, b.c, 14); }
+        const n = balls.length; bonus += n * .5; pop(n ? 'Boum ! +' + (n * .5).toFixed(1) + ' s' : 'Boum !');
+        shake = .4; sfx.boom(); if (navigator.vibrate) navigator.vibrate(120);
+      }
     }
   }
   items = items.filter(it => it.life > 0);
@@ -176,11 +220,17 @@ function loop(now) {
     b.vy += g * bdt; b.x += b.vx * bdt; b.y += b.vy * bdt;
     // rebond au sol, toujours assez haut (≥ 45 % de l'écran) pour qu'on puisse passer dessous
     if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.max(Math.abs(b.vy) * 0.82, Math.sqrt(2 * g * H * 0.45)); sfx.bounce(b.r); }
-    const dx = b.x - player.x, dy = b.y - player.y, rr = (b.r + player.r) * 0.9; // hitbox un peu indulgente
-    if (dx * dx + dy * dy < rr * rr) {
+    if (b.gone) continue;
+    const dx = b.x - player.x, dy = b.y - player.y, rr = (b.r + pr()) * 0.9; // hitbox un peu indulgente
+    const d2 = dx * dx + dy * dy;
+    if (d2 < rr * rr) {
       if (!shield) return gameOver();
       shield = 0; b.gone = true; pop('Bouclier cassé'); sfx.stomp();   // le bouclier encaisse une balle
+      burst(b.x, b.y, b.c, 16); shake = .25;
       if (navigator.vibrate) navigator.vibrate(80);
+    } else if (d2 < rr * rr * 1.9) b.close = true;  // passe tout près…
+    else if (b.close && !b.near) {                    // …et repart sans toucher : frôlée !
+      b.near = true; bonus += .5; pop('Frôlé ! +0,5'); sfx.near();
     }
   }
   balls = balls.filter(b => !b.gone && b.x > -b.r && b.x < W + b.r);  // éclatées ou sorties de l'écran
@@ -189,7 +239,14 @@ function loop(now) {
 }
 
 function gameOver() {
-  running = false; dragX = null; draw();
+  running = false; dragX = null;
+  burst(player.x, player.y, '#ffcc33', 40, 1.3); shake = .5;   // la balle jaune éclate
+  let prev = performance.now();
+  (function boom(now) {                           // on laisse retomber les éclats derrière l'écran de fin
+    const dt = Math.min((now - prev) / 1000, .05); prev = now;
+    stepParts(dt); shake = Math.max(0, shake - dt); draw();
+    if (!running && (parts.length || shake)) requestAnimationFrame(boom);
+  })(prev);
   musicStop(); sfx.hit();
   if (navigator.vibrate) navigator.vibrate(200);
   const sc = score();
@@ -202,30 +259,46 @@ function gameOver() {
   (me ? api('scores', { name: me.name, token: me.token, score: Math.round(sc * 10) }) : api('scores'))
     .then(l => { renderBoard(list, l.slice(0, 5)); if (me) msg.textContent = '' },
       e => msg.textContent = e === 403 ? 'Pseudo inconnu : réenregistre-toi au menu' : 'Tableau des scores indisponible');
-  $('over').classList.remove('hide');
+  setTimeout(() => running || $('over').classList.remove('hide'), 700);   // le temps de voir l'explosion
 }
 
 function circle(x, y, r, c) { cx.fillStyle = c; cx.beginPath(); cx.arc(x, y, r, 0, Math.PI * 2); cx.fill(); }
 function draw() {
-  cx.fillStyle = '#1b2a49'; cx.fillRect(0, 0, W, H);
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cx.fillStyle = player ? mix(bgFrom, bgTo, bgMix) : BGS[0]; cx.fillRect(0, 0, W, H);
+  for (const s of stars) circle(s.x, s.y, s.s, 'rgba(255,255,255,.25)');
   if (!player) return;
+  if (shake) cx.translate((Math.random() - .5) * H * .04 * shake / .5, (Math.random() - .5) * H * .04 * shake / .5);
   for (const b of balls) { circle(b.x, b.y, b.r, b.c); circle(b.x - b.r * .3, b.y - b.r * .3, b.r * .25, 'rgba(255,255,255,.35)'); }
+  for (const p of parts) { cx.globalAlpha = Math.min(1, p.life * 2); circle(p.x, p.y, p.r, p.c); }
+  cx.globalAlpha = 1;
   cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillStyle = '#fff';  // opaque, sinon les emojis héritent du reflet à 35 %
   for (const it of items) {
     if (it.life < 1.5 && Math.floor(it.life * 8) % 2) continue;      // clignote avant de disparaître
     cx.font = (it.s * 1.8 | 0) + 'px system-ui';
     cx.fillText(ITEMS[it.kind], it.x, it.y + Math.sin(performance.now() / 200) * it.s * .1);
   }
-  circle(player.x, player.y, player.r, '#ffcc33');
-  circle(player.x - player.r * .3, player.y - player.r * .3, player.r * .25, 'rgba(255,255,255,.5)');
-  if (shield > 0 && (shield > 2 || Math.floor(shield * 8) % 2)) {  // clignote les 2 dernières secondes
-    cx.strokeStyle = '#7fd8ff'; cx.lineWidth = player.r * .15;
-    cx.beginPath(); cx.arc(player.x, player.y, player.r * 1.3, 0, Math.PI * 2); cx.stroke();
+  if (running) {                                 // après le choc, la balle jaune a éclaté
+    const r = pr(), air = Math.min(1, (H - r - player.y) / (H * .4));
+    if (air > 0) circle(player.x, H - r * .15, r * (1 - air * .5), 'rgba(0,0,0,.25)');  // ombre pendant le saut
+    if (mini > 0 && mini < 1.5 && Math.floor(mini * 8) % 2) circle(player.x, player.y, player.r, 'rgba(255,204,51,.3)'); // va regrandir
+    circle(player.x, player.y, r, '#ffcc33');
+    circle(player.x - r * .3, player.y - r * .3, r * .25, 'rgba(255,255,255,.5)');
+    if (shield > 0 && (shield > 2 || Math.floor(shield * 8) % 2)) {  // clignote les 2 dernières secondes
+      cx.strokeStyle = '#7fd8ff'; cx.lineWidth = r * .15;
+      cx.beginPath(); cx.arc(player.x, player.y, r * 1.3, 0, Math.PI * 2); cx.stroke();
+    }
   }
   cx.fillStyle = '#fff'; cx.font = 'bold ' + (H * 0.07 | 0) + 'px system-ui';
-  cx.fillText(score().toFixed(1) + ' s' + (slow > 0 ? '  🐢' : ''), W / 2, H * 0.1);
+  cx.fillText(score().toFixed(1) + ' s' + (slow > 0 ? '  🐢' : '') + (mini > 0 ? '  🧪' : ''), W / 2, H * 0.1);
+  cx.font = 'bold ' + (H * 0.035 | 0) + 'px system-ui'; cx.globalAlpha = .6;
+  cx.fillText('Niveau ' + level, W / 2, H * 0.17);
   cx.font = 'bold ' + (H * 0.06 | 0) + 'px system-ui';
   for (const o of pops) { cx.globalAlpha = Math.min(1, o.t * 2); cx.fillText(o.text, o.x, o.y); }
+  if (banner) {                                  // « Niveau N » qui grossit puis s'efface
+    cx.globalAlpha = Math.min(1, banner); cx.font = 'bold ' + (H * (.12 + (1.6 - banner) * .03) | 0) + 'px system-ui';
+    cx.fillText('Niveau ' + level, W / 2, H * .42);
+  }
   cx.globalAlpha = 1;
 }
 
@@ -301,6 +374,11 @@ const sfx = {
   shield: () => arp([523, 659, 784, 1047], .06, 'triangle', .25),
   slow: () => tone(700, 150, .8, 'sine', .25),
   stomp: () => tone(700, 120, .25, 'square', .18),
+  jump: () => tone(300, 750, .15, 'square', .12),
+  near: () => tone(1500, 2200, .08, 'sine', .15),
+  mini: () => tone(1200, 400, .3, 'triangle', .25),
+  boom: () => { tone(220, 30, .7, 'sawtooth', .35); tone(110, 25, .9, 'square', .25, .03); },
+  record: () => arp([784, 988, 1175, 1568, 1175, 1568], .07, 'square', .14),
 };
 const midi = m => 440 * 2 ** ((m - 69) / 12);
 const MEL = [76, 0, 79, 0, 81, 79, 76, 0, 74, 0, 76, 79, 76, 0, 0, 0, 72, 0, 74, 76, 79, 0, 76, 74, 72, 0, 74, 0, 72, 0, 0, 0];
