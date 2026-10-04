@@ -8,42 +8,115 @@
 <meta name="theme-color" content="#1b2a49">
 <title>Ballon</title>
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#1b2a49;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;font-family:system-ui,sans-serif}
+  /* Style iOS : SF Rounded, matériaux flous, listes groupées, boutons capsule, zones sûres (encoche) */
+  :root{
+    --label:#fff; --label2:rgba(235,235,245,.6); --label3:rgba(235,235,245,.3);
+    --fill:rgba(118,118,128,.24); --fill2:rgba(118,118,128,.36); --sep:rgba(84,84,88,.6);
+    --card:rgba(28,28,30,.62); --yellow:#ffcc33; --red:#ff453a;
+    --sl:max(16px,env(safe-area-inset-left)); --sr:max(16px,env(safe-area-inset-right));
+    --st:max(12px,env(safe-area-inset-top)); --sb:max(12px,env(safe-area-inset-bottom));
+  }
+  html,body{margin:0;height:100%;overflow:hidden;background:#1b2a49;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+    font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased;color:var(--label);-webkit-tap-highlight-color:transparent}
   canvas{display:block;width:100vw;height:100vh;height:100dvh}
-  .ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(27,42,73,.9);color:#fff;text-align:center;padding:16px}
+  .ov{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;
+    padding:var(--st) var(--sr) var(--sb) var(--sl);box-sizing:border-box;
+    background:rgba(20,26,48,.55);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)}
   .hide{display:none!important}
-  h1{margin:0;font-size:48px;letter-spacing:3px}
-  p{margin:0;color:#cfd8ea;font-size:18px}
-  #big{font-size:56px;font-weight:800}
-  button{font:inherit;font-size:22px;font-weight:700;border:0;border-radius:16px;background:#ffcc33;color:#1b2a49;padding:12px 28px}
+  h1{margin:0;font-size:34px;font-weight:800;letter-spacing:.2px}
+  p{margin:0;color:var(--label2);font-size:17px}
+  #big{font-size:64px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+  button{font:inherit;font-size:17px;font-weight:600;border:0;border-radius:999px;background:var(--yellow);color:#1b2a49;padding:0 28px;height:50px;
+    cursor:pointer;transition:transform .12s,filter .12s}
+  button:active{transform:scale(.96);filter:brightness(.85)}
+  .small{background:var(--fill);color:var(--label);height:44px;padding:0 20px}
   .row{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
   .col{display:flex;flex-direction:column;align-items:center;gap:8px}
-  input{font:inherit;font-size:18px;border:0;border-radius:14px;padding:10px 12px;width:150px;-webkit-user-select:text;user-select:text}
-  .small{font-size:16px;padding:10px 14px;background:#fff}
-  .err{color:#ffb4a8;min-height:1em;font-size:15px}
-  a{color:#ffcc33}
-  ol{margin:0;padding:0 0 0 30px;text-align:left;font-size:18px;min-width:200px;max-height:55vh;overflow:auto;color:#fff}
-  li{padding:2px 0}
-  li.me{font-weight:800;color:#ffcc33}
-  #mute{position:fixed;top:8px;right:8px;z-index:5;font-size:18px;padding:6px 10px;background:rgba(255,255,255,.85)}
+  input{font:inherit;font-size:17px;border:0;border-radius:10px;padding:0 12px;height:40px;width:100%;box-sizing:border-box;min-width:0;
+    background:var(--fill);color:var(--label);outline:none;-webkit-user-select:text;user-select:text;caret-color:var(--yellow)}
+  input::placeholder{color:var(--label3)}
+  .err{color:var(--red);font-size:13px}
+  .err:empty{display:none}
+  a{color:var(--yellow);text-decoration:none;font-weight:600}
+  ol{margin:0;padding:6px 0;list-style:none;counter-reset:n;text-align:left;font-size:17px;min-width:240px;max-height:58vh;overflow:auto;
+    background:var(--card);border-radius:14px}
+  ol li{counter-increment:n;display:flex;gap:12px;align-items:center;padding:8px 16px;position:relative}
+  ol li::before{content:counter(n);width:22px;text-align:center;color:var(--label2);font-weight:700;font-variant-numeric:tabular-nums}
+  ol li:nth-child(1)::before{content:'🥇'} ol li:nth-child(2)::before{content:'🥈'} ol li:nth-child(3)::before{content:'🥉'}
+  ol li+li::after{content:'';position:absolute;top:0;left:50px;right:0;border-top:.5px solid var(--sep)}
+  li.me{font-weight:800;color:var(--yellow)}
+  #mute{position:fixed;top:var(--st);left:var(--sl);z-index:5;width:40px;height:40px;padding:0;font-size:17px;background:var(--fill);
+    -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
   #rotate{display:none;z-index:10}
   @media (orientation:portrait){#rotate{display:flex}}
+
+  /* ---- accueil : héros à gauche, réglages façon liste groupée à droite ---- */
+  #menu{flex-direction:row;gap:clamp(20px,5vw,56px);align-items:center}
+  .hero{flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;max-width:340px}
+  .logo{width:72px;height:72px;border-radius:50%;position:relative;
+    background:radial-gradient(circle at 32% 30%,#fff6 0 18%,transparent 19%),radial-gradient(circle at 35% 30%,#ffe27a,var(--yellow) 55%,#e0a800);
+    box-shadow:0 10px 30px #ffcc3355,inset 0 -6px 12px #0002;animation:hop 1.6s ease-in-out infinite}
+  @keyframes hop{0%,100%{transform:translateY(0) scale(1,1)}45%{transform:translateY(-14px)}90%{transform:translateY(0) scale(1.08,.92)}}
+  .hero h1{font-size:44px;margin-top:4px}
+  .tagline{font-size:15px}
+  #best{font-size:13px;font-weight:600;color:var(--yellow);background:#ffcc331f;padding:5px 12px;border-radius:999px}
+  #best:empty{display:none}
+  .actions{display:flex;flex-direction:column;gap:10px;width:100%;margin-top:6px}
+  .actions button{width:100%}
+  #play{font-size:20px;font-weight:700;height:54px;box-shadow:0 8px 24px #ffcc3340}
+  .side{flex:1;max-width:380px;max-height:100%;overflow:auto;text-align:left;-webkit-overflow-scrolling:touch;padding:4px 0}
+  .side::-webkit-scrollbar{display:none}
+  .hdr{font-size:13px;color:var(--label2);text-transform:uppercase;letter-spacing:.3px;margin:12px 16px 5px}
+  .hdr:first-child{margin-top:0}
+  .card{background:var(--card);border-radius:14px;overflow:hidden}
+  .cell{display:flex;align-items:center;gap:12px;min-height:44px;padding:2px 16px;position:relative;font-size:16px;color:var(--label)}
+  .cell+.cell::before{content:'';position:absolute;top:0;left:56px;right:0;border-top:.5px solid var(--sep)}
+  #hello::before{display:none}
+  .ic{width:28px;height:28px;border-radius:7px;display:grid;place-items:center;font-size:16px;flex:none}
+  .cell .dt{margin-left:auto;color:var(--label2);font-size:15px;white-space:nowrap}
+  .cell #regBtn{height:34px;padding:0 14px;font-size:15px;flex:none}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--yellow);color:#1b2a49;font-weight:800;display:grid;place-items:center;flex:none}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;padding:8px 10px}
+  .chip{background:var(--fill);border-radius:999px;padding:4px 8px;font-size:12px;color:var(--label);white-space:nowrap}
+  #regMsg{padding:0 16px 10px}
+  @media (max-height:340px){.logo{width:56px;height:56px}.hero h1{font-size:36px}.tagline{display:none}}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <button id="mute" aria-label="Couper le son">🔊</button>
 <div id="menu" class="ov">
-  <h1>BALLON</h1>
-  <p>Penche le téléphone ou glisse ton doigt pour bouger la balle jaune.<br><b>Touche l'écran pour sauter !</b> Frôle les balles sans les toucher : +0,5 s<br>Ramasse ⭐ +3 s · 🛡️ bouclier · 🐢 ralenti · 💣 bombe · 🧪 mini</p>
-  <div id="reg" class="row"><input id="nameIn" maxlength="12" placeholder="Ton pseudo" autocomplete="off"><button id="regBtn" class="small">S'enregistrer</button></div>
-  <p id="hello" class="hide">Joueur : <b id="meName"></b> · <a href="#" id="logout">changer</a></p>
-  <p id="regMsg" class="err"></p>
-  <p id="best"></p>
-  <div class="row"><button id="play">Jouer</button><button id="boardBtn" class="small">🏆 Scores</button></div>
+  <div class="hero">
+    <div class="logo"></div>
+    <h1>Ballon</h1>
+    <p class="tagline">Esquive les balles qui tombent</p>
+    <p id="best"></p>
+    <div class="actions">
+      <button id="play">▶︎ Jouer</button>
+      <button id="boardBtn" class="small">🏆 Classement</button>
+    </div>
+  </div>
+  <div class="side">
+    <div class="hdr">Joueur</div>
+    <div class="card">
+      <div id="reg" class="cell"><input id="nameIn" maxlength="12" placeholder="Ton pseudo" autocomplete="off" enterkeyhint="done"><button id="regBtn">OK</button></div>
+      <div id="hello" class="cell hide"><span class="avatar" id="avatar"></span><b id="meName"></b><a href="#" id="logout" class="dt">Changer</a></div>
+      <p id="regMsg" class="err"></p>
+    </div>
+    <div class="hdr">Comment jouer</div>
+    <div class="card">
+      <div class="cell"><span class="ic" style="background:#0a84ff">📱</span>Penche ou glisse<span class="dt">bouger</span></div>
+      <div class="cell"><span class="ic" style="background:#30d158">👆</span>Touche l'écran<span class="dt">sauter</span></div>
+      <div class="cell"><span class="ic" style="background:#bf5af2">✨</span>Frôle une balle<span class="dt">+0,5 s</span></div>
+    </div>
+    <div class="hdr">Bonus</div>
+    <div class="card chips">
+      <span class="chip">⭐ +3 s</span><span class="chip">🛡️ Bouclier</span><span class="chip">🐢 Ralenti</span><span class="chip">💣 Bombe</span><span class="chip">🧪 Mini</span>
+    </div>
+  </div>
 </div>
 <div id="board" class="ov hide">
-  <h1>🏆 Scores</h1>
+  <h1>🏆 Classement</h1>
   <ol id="boardList"></ol>
   <button id="boardClose" class="small">Retour</button>
 </div>
@@ -319,7 +392,7 @@ function renderBoard(el, list) {
 }
 function showMe() {
   $('reg').classList.toggle('hide', !!me); $('hello').classList.toggle('hide', !me);
-  if (me) $('meName').textContent = me.name;
+  if (me) { $('meName').textContent = me.name; $('avatar').textContent = me.name[0].toUpperCase(); }
 }
 $('regBtn').onclick = async () => {
   const name = $('nameIn').value.trim(), msg = $('regMsg');
@@ -342,7 +415,32 @@ $('boardBtn').onclick = () => {
   api('scores').then(l => renderBoard($('boardList'), l), () => $('boardList').textContent = 'Tableau des scores indisponible');
 };
 $('boardClose').onclick = () => $('board').classList.add('hide');
-$('toMenu').onclick = () => { $('over').classList.add('hide'); showBest(); $('menu').classList.remove('hide'); };
+$('toMenu').onclick = () => { $('over').classList.add('hide'); showBest(); $('menu').classList.remove('hide'); attract(); };
+
+// Écran d'accueil : quelques balles rebondissent derrière le menu flouté.
+let deco = null;
+function attract() {
+  if (deco) return;
+  deco = Array.from({ length: 7 }, (_, i) => {
+    const r = H * (.05 + Math.random() * .08);
+    return { x: r + Math.random() * (W - 2 * r), y: Math.random() * H * .5, r, vx: (Math.random() < .5 ? -1 : 1) * H * (.25 + Math.random() * .3),
+      vy: 0, c: i ? COLORS[i % COLORS.length] : '#ffcc33' };
+  });
+  let prev = performance.now();
+  (function frame(now) {
+    if (running || $('menu').classList.contains('hide')) { deco = null; return; }
+    const dt = Math.min((now - prev) / 1000, .05), g = H * 1.2; prev = now;
+    cx.setTransform(dpr, 0, 0, dpr, 0, 0); cx.fillStyle = BGS[0]; cx.fillRect(0, 0, W, H);
+    for (const s of stars) { s.y += s.s * H * .02 * dt; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } circle(s.x, s.y, s.s, 'rgba(255,255,255,.25)'); }
+    for (const b of deco) {
+      b.vy += g * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+      if (b.y > H - b.r) { b.y = H - b.r; b.vy = -Math.sqrt(2 * g * H * (.5 + Math.random() * .3)); }
+      if (b.x < b.r || b.x > W - b.r) { b.vx *= -1; b.x = Math.min(Math.max(b.x, b.r), W - b.r); }
+      circle(b.x, b.y, b.r, b.c); circle(b.x - b.r * .3, b.y - b.r * .3, b.r * .25, 'rgba(255,255,255,.35)');
+    }
+    requestAnimationFrame(frame);
+  })(prev);
+}
 
 // ---------- son (Web Audio, tout synthétisé, aucun fichier ; repris de Jump) ----------
 let ac, master, musicGain, muted = false, musicTimer, step = 0, nextT = 0;
@@ -403,7 +501,7 @@ $('mute').onclick = () => {
 };
 showMute();
 
-resize(); showBest(); showMe();
+resize(); showBest(); showMe(); attract();
 </script>
 </body>
 </html>
