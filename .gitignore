@@ -1,3 +1,4 @@
 .gstack/
 data/
 __pycache__/
+server.log
