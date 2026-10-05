@@ -142,6 +142,9 @@ const BGS = ['#1b2a49', '#2b1d4a', '#123b44', '#3d1c3a', '#1d3b2a', '#40291a', '
 const pr = () => player.r * (mini > 0 ? .6 : 1);                                // rayon actuel du joueur
 const score = () => t + bonus;
 try { me = JSON.parse(localStorage.getItem('ballon-me')) } catch {}
+// Dans l'app iOS, le joueur est celui de Game Center : pas de pseudo à créer.
+const GC = !!window.__ballonGC;
+if (GC) me = null;
 const COLORS = ['#ff5e5b', '#00cecb', '#a06cd5', '#ff9f1c', '#2ec4b6', '#e71d36', '#7bd389'];
 
 function getBest() { try { return +localStorage.getItem('ballon-best') || 0 } catch { return 0 } }
@@ -315,7 +318,7 @@ function gameOver() {
   $('best2').textContent = 'Record : ' + getBest().toFixed(1) + ' s';
   // score envoyé en dixièmes de seconde (entier) ; le serveur garde le meilleur
   const list = $('overList'), msg = $('overMsg'); list.textContent = '';
-  msg.textContent = me ? 'Envoi du score…' : 'Enregistre un pseudo au menu pour entrer au tableau des scores';
+  msg.textContent = me ? 'Envoi du score…' : GC ? 'Connecte-toi à Game Center pour entrer au classement' : 'Enregistre un pseudo au menu pour entrer au tableau des scores';
   (me ? api('scores', { name: me.name, token: me.token, score: Math.round(sc * 10) }) : api('scores'))
     .then(l => { renderBoard(list, l.slice(0, 5)); if (me) msg.textContent = '' },
       e => msg.textContent = e === 403 ? 'Pseudo inconnu : réenregistre-toi au menu' : 'Tableau des scores indisponible');
@@ -378,7 +381,7 @@ function renderBoard(el, list) {
   if (!list.length) el.textContent = "Aucun score pour l'instant";
 }
 function showMe() {
-  $('reg').classList.toggle('hide', !!me); $('hello').classList.toggle('hide', !me);
+  $('reg').classList.toggle('hide', !!me || GC); $('hello').classList.toggle('hide', !me); $('logout').classList.toggle('hide', GC);
   if (me) { $('meName').textContent = me.name; $('avatar').textContent = me.name[0].toUpperCase(); }
 }
 $('regBtn').onclick = async () => {
@@ -489,6 +492,10 @@ $('mute').onclick = () => {
 showMute();
 
 resize(); showBest(); showMe(); attract();
+if (GC) {                                        // l'app prévient quand le joueur Game Center change
+  window.__ballonPlayer = name => { me = name ? { name } : null; showMe(); };
+  api('me').then(r => __ballonPlayer(r.name), () => {});
+}
 </script>
 </body>
 </html>
