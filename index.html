@@ -105,7 +105,7 @@
     </div>
     <div class="hdr">Comment jouer</div>
     <div class="card">
-      <div class="cell"><span class="ic" style="background:#0a84ff">📱</span>Penche ou glisse<span class="dt">bouger</span></div>
+      <div class="cell"><span class="ic" style="background:#0a84ff">📱</span>Penche<span class="dt">bouger</span></div>
       <div class="cell"><span class="ic" style="background:#30d158">👆</span>Touche l'écran<span class="dt">sauter</span></div>
       <div class="cell"><span class="ic" style="background:#bf5af2">✨</span>Frôle une balle<span class="dt">+0,5 s</span></div>
     </div>
@@ -190,26 +190,13 @@ async function enableTilt() {
   } catch {}
 }
 
-// Relative drag: the ball follows the finger's horizontal movement, wherever you touch.
-// A short tap without moving = jump.
-let dragX = null, tap = null;
-cv.addEventListener('pointerdown', e => { dragX = e.clientX; tap = { t: performance.now(), moved: 0 }; });
-addEventListener('pointermove', e => {
-  if (dragX === null || !running) return;
-  if (tap) tap.moved += Math.abs(e.clientX - dragX);
-  player.x = Math.min(Math.max(player.x + (e.clientX - dragX) * 1.3, pr()), W - pr());
-  dragX = e.clientX;
-});
-addEventListener('pointerup', () => {
-  if (tap && running && performance.now() - tap.t < 250 && tap.moved < 12) jump();
-  dragX = null; tap = null;
-});
+// Toucher l'écran = sauter (la balle ne se déplace qu'en penchant le téléphone).
+cv.addEventListener('pointerdown', () => { if (running) jump(); });
 const PG = () => H * 3;                          // gravité du joueur : saut sec
 function jump() {
   if (player.y < H - pr() - 1) return;           // déjà en l'air
   player.vy = -Math.sqrt(2 * PG() * H * .4); sfx.jump();
 }
-addEventListener('pointercancel', () => dragX = null);
 
 function spawn() {
   const r = H * (0.03 + Math.random() * 0.11);          // petites à grosses
@@ -252,7 +239,7 @@ function loop(now) {
     bgFrom = mix(bgFrom, bgTo, bgMix); bgTo = BGS[(level - 1) % BGS.length]; bgMix = 0;
   }
   t += dt;
-  if (tilt !== null && tilt0 !== null && dragX === null) {
+  if (tilt !== null && tilt0 !== null) {
     const k = Math.max(-1, Math.min(1, (tilt - tilt0) / TILT_MAX));
     if (Math.abs(k) > 0.08)                      // petite zone morte pour que la balle ne dérive pas
       player.x = Math.min(Math.max(player.x + k * W * TILT_SPEED * dt, pr()), W - pr());
@@ -312,7 +299,7 @@ function loop(now) {
 }
 
 function gameOver() {
-  running = false; dragX = null;
+  running = false;
   burst(player.x, player.y, '#ffcc33', 40, 1.3); shake = .5;   // la balle jaune éclate
   let prev = performance.now();
   (function boom(now) {                           // on laisse retomber les éclats derrière l'écran de fin
